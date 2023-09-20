@@ -1,171 +1,245 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Log Viewer</title>
-    <link rel="stylesheet" href="main.css" />
-  </head>
-  <body>
-    <div class="container">
-      <div class="sidebar">
-        <h1>Log Viewer</h1>
-        <button onclick="selectLog('servico1')">Serviço 1</button>
-        <button onclick="selectLog('servico2')">Serviço 2</button>
 
-        <button onclick="openModal()">Iniciar Serviço</button>
-      </div>
-      <input type="text" id="search" placeholder="Pesquisar nos logs..." oninput="searchLogs()">
-      <div class="content">
-        <div id="logContainer"></div>
-      </div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Log Viewer</title>
+  <link rel="stylesheet" href="main.css" />
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="sidebar">
+      <h1>Log Viewer</h1>
+      <button onclick="toggleModal('modal', 'open')">Iniciar Serviços</button>
+      <button onclick="toggleModal('stop-services-modal', 'open')" class="stop-button">Parar Serviços</button>
     </div>
-    <div id="modal" class="modal">
-      <div class="modal-content">
-        <span class="close" onclick="closeModal()">&times;</span>
-        <h2>Iniciar Serviços</h2>
-        <input
-          type="text"
-          id="serviceCommand"
-          placeholder="Comando"
-          class="input-field"
-        />
-        <input
-          type="text"
-          id="serviceParams"
-          placeholder="Parâmetros (separados por vírgula)"
-          class="input-field"
-        />
-
-        <h3>Opções Pré-definidas</h3>
-        <div id="predefinedOptions"></div>
-
-        <button onclick="startService()" class="start-button">
-          Iniciar Serviço
-        </button>
-
-        <h3>Histórico</h3>
-        <div id="history"></div>
-      </div>
+  </div>
+  <input type="text" id="search" placeholder="Pesquisar nos logs..." oninput="searchLogs()">
+  <button onclick="highlightNextResult()">Próximo</button>
+  <button onclick="clearHighlight()">Limpar Destaque</button>
+  <div class="content">
+    <div id="logContainer"></div>
+  </div>
+  </div>
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="toggleModal('modal', 'close')">&times;</span>
+      <h2>Iniciar Serviços</h2>
+      <div id="services-checklist"></div>
+      <button onclick="handleServices('start')" class="start-button">
+        Iniciar Serviços
+      </button>
+      <h3>Histórico</h3>
+      <div id="history"></div>
     </div>
-    <script src="/socket.io/socket.io.js"></script>
-    <script>
-      let socket;
-      let currentLogPath;
+  </div>
+  <div id="stop-services-modal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="toggleModal('stop-services-modal', 'close')">&times;</span>
+      <h2>Parar Serviços</h2>
+      <div id="stop-services-checklist"></div>
+      <button onclick="handleServices('stop')" class="stop-button">
+        Parar Serviço
+      </button>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    let socket;
+    let currentLogPath;
+    let currentHighlightIndex = 0;
+    let highlightedElements = [];
 
-      function searchLogs() {
-        const searchTerm = document.getElementById("search").value;
-        const logsContainer = document.getElementById("logs");
-        const logs = logsContainer.innerText;
+    const serviceNames = [
+      'account',
+      'order',
+      'auth',
+      'gateway',
+      'backoffice',
+      'offer',
+      'purchase'
+    ];
 
-        if (searchTerm) {
-          const regex = new RegExp(`(${searchTerm})`, "gi");
-          const highlightedLogs = logs.replace(regex, "<mark>$1</mark>");
-          logsContainer.innerHTML = highlightedLogs;
-        } else {
-          logsContainer.innerText = logs;
-        }
-      }
+    function initialize() {
+      socket = io('http://localhost:3000');
 
-      async function getLogs(service, logPath) {
-        document.getElementById("search").value = "";
-        document.getElementById("logContainer").innerText = "";
-        currentLogPath = logPath;
-
-        if (socket) {
-          socket.disconnect();
-        }
-
-        socket = io("http://localhost:3000");
-
-        socket.on("logData", (data) => {
-          document.getElementById("logContainer").innerText += data;
+      socket.on('activeServices', (services) => {
+        const servicesContainer = document.getElementById('servicesContainer');
+        servicesContainer.innerHTML = '';
+        services.forEach((service) => {
+          createServiceButton(service);
         });
-
-        socket.emit("subscribeToLog", { logPath });
-      }
-      function openModal() {
-        document.getElementById("modal").style.display = "block";
-      }
-
-      function closeModal() {
-        document.getElementById("modal").style.display = "none";
-      }
-
-      const predefinedOptions = [
-        { command: "nx", params: ["param1", "param2"] },
-        // ... (adicione mais opções conforme necessário)
-      ];
-
-      function renderPredefinedOptions() {
-        const container = document.getElementById("predefinedOptions");
-        container.innerHTML = "";
-        predefinedOptions.forEach((option, index) => {
-          const optionElem = document.createElement("div");
-          optionElem.textContent = `${option.command} ${option.params.join(
-            " "
-          )}`;
-          optionElem.onclick = () => selectPredefinedOption(index);
-          container.appendChild(optionElem);
-        });
-      }
-
-      function selectPredefinedOption(index) {
-        const { command, params } = predefinedOptions[index];
-        document.getElementById("serviceCommand").value = command;
-        document.getElementById("serviceParams").value = params.join(", ");
-      }
-
-      function startService() {
-        const command = document.getElementById("serviceCommand").value;
-        const params = document
-          .getElementById("serviceParams")
-          .value.split(",")
-          .map((p) => p.trim());
-
-        fetch("/startService", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command, params }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            alert("Serviço iniciado: " + JSON.stringify(data));
-
-            const history = JSON.parse(
-              localStorage.getItem("serviceHistory") || "[]"
-            );
-            history.push({
-              command,
-              params,
-              timestamp: new Date().toISOString(),
-            });
-            localStorage.setItem("serviceHistory", JSON.stringify(history));
-
-            renderHistory();
-          })
-          .catch((error) => alert("Erro ao iniciar o serviço: " + error));
-      }
-
-      function renderHistory() {
-        const history = JSON.parse(
-          localStorage.getItem("serviceHistory") || "[]"
-        );
-        const container = document.getElementById("history");
-        container.innerHTML = "";
-        history.forEach((item) => {
-          const historyElem = document.createElement("div");
-          historyElem.textContent = `${item.timestamp}: ${
-            item.command
-          } ${item.params.join(" ")}`;
-          container.appendChild(historyElem);
-        });
-      }
-
-      document.addEventListener("DOMContentLoaded", () => {
-        renderPredefinedOptions();
-        renderHistory();
       });
-    </script>
-  </body>
+
+      socket.on('serviceStarted', (service) => {
+        createServiceButton(service);
+      });
+
+      socket.on('serviceStopped', (service) => {
+        const button = document.getElementById(`btn-${service}`);
+        if (button) button.remove();
+      });
+
+      socket.on('serviceError', (error) => {
+        console.error(error);
+      });
+    }
+
+    function loadServicesChecklist(containerID = 'services-checklist') {
+      const checklistContainer = document.getElementById(containerID);
+      checklistContainer.innerHTML = '';
+      const history = JSON.parse(localStorage.getItem('servicesHistory')) || {};
+
+      serviceNames.forEach((serviceName) => {
+        const isChecked = history[serviceName] ? 'checked' : '';
+        checklistContainer.innerHTML += `
+        <div>
+          <input type="checkbox" id="${serviceName}" name="${serviceName}" ${isChecked} />
+          <label for="${serviceName}">${serviceName}</label>
+        </div>`;
+      });
+    }
+
+    function handleServices(action) {
+      const selectedServices = serviceNames.filter(serviceName => document.getElementById(serviceName).checked);
+
+      if (selectedServices.length > 0) {
+        socket.emit(`${action}Services`, selectedServices);
+        updateServiceHistory(selectedServices, action);
+      } else {
+        alert(`Nenhum serviço selecionado para ${action === 'start' ? 'iniciar' : 'parar'}.`);
+      }
+    }
+
+    function updateServiceHistory(services, action) {
+      let history = JSON.parse(localStorage.getItem('servicesHistory')) || {};
+      const timestamp = new Date().toISOString();
+
+      services.forEach(service => {
+        history[service] = { timestamp, action };
+      });
+
+      localStorage.setItem('servicesHistory', JSON.stringify(history));
+    }
+
+    function searchLogs() {
+      const searchTerm = document.getElementById("search").value;
+      const logsContainer = document.getElementById("logContainer");
+      const logs = logsContainer.innerHTML;
+
+      if (searchTerm) {
+        highlightedElements = [];
+        currentHighlightIndex = 0;
+        const regex = new RegExp(`(${searchTerm})`, "gi");
+        logsContainer.innerHTML = logs.replace(regex, (_, match) => {
+          highlightedElements.push(match);
+          return `<mark>${match}</mark>`;
+        });
+      } else {
+        logsContainer.innerHTML = logs.replace(/<\/?mark>/gi, "");
+      }
+    }
+
+    function highlightNextResult() {
+      if (highlightedElements.length > 0) {
+        const elements = document.querySelectorAll('#logContainer mark');
+        elements[currentHighlightIndex].style.backgroundColor = '';
+        currentHighlightIndex = (currentHighlightIndex + 1) % highlightedElements.length;
+        elements[currentHighlightIndex].style.backgroundColor = 'yellow';
+      }
+    }
+
+    function clearHighlight() {
+      const logsContainer = document.getElementById("logContainer");
+      logsContainer.innerHTML = logsContainer.innerHTML.replace(/<\/?mark>/gi, "");
+      highlightedElements = [];
+      currentHighlightIndex = 0;
+    }
+    function createServiceButton(service) {
+      const servicesContainer = document.getElementById('servicesContainer');
+      const button = document.createElement('button');
+      button.innerText = `Serviço ${service}`;
+      button.id = `btn-${service}`;
+      button.onclick = () => getLogs(service);
+      servicesContainer.appendChild(button);
+
+      const stopButton = document.createElement('button');
+      stopButton.innerText = `Parar ${service}`;
+      stopButton.onclick = () => stopService(service);
+      servicesContainer.appendChild(stopButton);
+    }
+
+    function handleServices(action) {
+      const selectedServices = serviceNames.filter(serviceName => document.getElementById(serviceName).checked);
+
+      if (selectedServices.length > 0) {
+        socket.emit(`${action}Services`, selectedServices);
+        updateServiceHistory(selectedServices, action);
+      } else {
+        alert(`Nenhum serviço selecionado para ${action === 'start' ? 'iniciar' : 'parar'}.`);
+      }
+    }
+
+    function searchLogs() {
+      const searchTerm = document.getElementById("search").value;
+      const logsContainer = document.getElementById("logs");
+      const logs = logsContainer.innerText;
+
+      if (searchTerm) {
+        const regex = new RegExp(`(${searchTerm})`, "gi");
+        const highlightedLogs = logs.replace(regex, "<mark>$1</mark>");
+        logsContainer.innerHTML = highlightedLogs;
+      } else {
+        logsContainer.innerText = logs;
+      }
+    }
+
+    async function getLogs(service) {
+      document.getElementById("search").value = "";
+      document.getElementById("logContainer").innerText = "";
+
+      if (socket) {
+        socket.disconnect();
+      }
+
+      socket = io("http://localhost:3000");
+
+      socket.on("logData", (data) => {
+        document.getElementById("logContainer").innerText += data;
+      });
+
+      socket.emit("subscribeToLog", { service });
+    }
+
+    function toggleModal(modalID, action = 'open') {
+      document.getElementById(modalID).style.display = action === 'open' ? 'block' : 'none';
+      if (modalID === 'stop-services-modal' && action === 'open') {
+        loadServicesChecklist('stop-services-checklist');
+      }
+    }
+
+    function renderHistory() {
+      const history = JSON.parse(
+        localStorage.getItem("servicesHistory") || "[]"
+      );
+      const container = document.getElementById("history");
+      container.innerHTML = "";
+      history.forEach((item) => {
+        const historyElem = document.createElement("div");
+        historyElem.textContent = `${item.timestamp}: ${item.command}`;
+        container.appendChild(historyElem);
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      loadServicesChecklist();
+      renderHistory();
+      initialize();
+    });
+  </script>
+</body>
+
 </html>

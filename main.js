@@ -5,7 +5,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 const fs = require('fs');
-const { exec } = require('child_process');
+
+const monorepoPath = '';
 
 app.use(express.static('public'));
 
@@ -13,30 +14,70 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/index.html');
 });
 
-app.post('/start-services', (req, res) => {
-  const services = req.body.services.join(' ');
-  exec(`./run-backend.sh ${services}`, (err, stdout, stderr) => {
-      if (err) {
-          return res.status(500).json({ error: stderr });
-      }
-      const logsInfo = JSON.parse(stdout.substring(stdout.lastIndexOf('{')));
-      res.json(logsInfo);
-  });
-});
-
 io.on('connection', (socket) => {
+  let activeServices = {};
   let currentLogStream;
 
-  socket.on('selectLog', (logKey) => {
-    if (currentLogStream) {
-      currentLogStream.close();
-    }
+  socket.emit('activeServices', Object.keys(activeServices));
 
-    currentLogStream = fs.createReadStream(logPaths[logKey], { encoding: 'utf8', flags: 'r' });
-    currentLogStream.on('data', (chunk) => {
+  socket.on('startService', (services) => {
+    services.forEach(service => {
+      if (activeServices[service]) {
+        socket.emit('serviceError', `O serviço ${service} já está ativo.`);
+        return;
+      }
+  
+      const logFile = `/tmp/logs/${service}.log`;
+      const serviceProcess = spawn('nx', ['run', `backend-${service}:serve`], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: monorepoPath
+      });
+  
+      activeServices[service] = { process: serviceProcess, logFile };
+  
+      serviceProcess.stdout.pipe(fs.createWriteStream(logFile, { flags: 'a' }));
+      serviceProcess.stderr.pipe(fs.createWriteStream(logFile, { flags: 'a' }));
+    });
+
+    socket.emit('servicesStarted', services);
+  });
+  
+
+  socket.on('stopService', (service) => {
+    if (activeServices[service]) {
+      activeServices[service].process.kill();
+      delete activeServices[service];
+      socket.emit('serviceStopped', service);
+    } else {
+      socket.emit('serviceError', `O serviço ${service} não está ativo.`);
+    }
+  });
+
+  socket.on('subscribeToLog', ({ service }) => {
+    const logPath = activeServices[service]?.logFile;
+    if (!logPath || !fs.existsSync(logPath)) {
+      socket.emit('logError', 'Caminho do log inválido ou log não encontrado.');
+      return;
+    }
+  
+    const readStream = fs.createReadStream(logPath, { encoding: 'utf8' });
+  
+    readStream.on('data', (chunk) => {
       socket.emit('logData', chunk);
     });
-  });
+  
+    readStream.on('end', () => {
+      socket.emit('logEnd');
+    });
+  
+    readStream.on('error', (error) => {
+      socket.emit('logError', error.message);
+    });
+  
+    socket.on('disconnect', () => {
+      readStream.close();
+    });
+  });  
 
   socket.on('disconnect', () => {
     if (currentLogStream) {
