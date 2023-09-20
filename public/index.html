@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Log Viewer</title>
+    <link rel="stylesheet" href="main.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div class="sidebar">
+        <h1>Log Viewer</h1>
+        <button onclick="selectLog('servico1')">Serviço 1</button>
+        <button onclick="selectLog('servico2')">Serviço 2</button>
+
+        <button onclick="openModal()">Iniciar Serviço</button>
+      </div>
+      <input type="text" id="search" placeholder="Pesquisar nos logs..." oninput="searchLogs()">
+      <div class="content">
+        <div id="logContainer"></div>
+      </div>
+    </div>
+    <div id="modal" class="modal">
+      <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h2>Iniciar Serviços</h2>
+        <input
+          type="text"
+          id="serviceCommand"
+          placeholder="Comando"
+          class="input-field"
+        />
+        <input
+          type="text"
+          id="serviceParams"
+          placeholder="Parâmetros (separados por vírgula)"
+          class="input-field"
+        />
+
+        <h3>Opções Pré-definidas</h3>
+        <div id="predefinedOptions"></div>
+
+        <button onclick="startService()" class="start-button">
+          Iniciar Serviço
+        </button>
+
+        <h3>Histórico</h3>
+        <div id="history"></div>
+      </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      let socket;
+      let currentLogPath;
+
+      function searchLogs() {
+        const searchTerm = document.getElementById("search").value;
+        const logsContainer = document.getElementById("logs");
+        const logs = logsContainer.innerText;
+
+        if (searchTerm) {
+          const regex = new RegExp(`(${searchTerm})`, "gi");
+          const highlightedLogs = logs.replace(regex, "<mark>$1</mark>");
+          logsContainer.innerHTML = highlightedLogs;
+        } else {
+          logsContainer.innerText = logs;
+        }
+      }
+
+      async function getLogs(service, logPath) {
+        document.getElementById("search").value = "";
+        document.getElementById("logContainer").innerText = "";
+        currentLogPath = logPath;
+
+        if (socket) {
+          socket.disconnect();
+        }
+
+        socket = io("http://localhost:3000");
+
+        socket.on("logData", (data) => {
+          document.getElementById("logContainer").innerText += data;
+        });
+
+        socket.emit("subscribeToLog", { logPath });
+      }
+      function openModal() {
+        document.getElementById("modal").style.display = "block";
+      }
+
+      function closeModal() {
+        document.getElementById("modal").style.display = "none";
+      }
+
+      const predefinedOptions = [
+        { command: "nx", params: ["param1", "param2"] },
+        // ... (adicione mais opções conforme necessário)
+      ];
+
+      function renderPredefinedOptions() {
+        const container = document.getElementById("predefinedOptions");
+        container.innerHTML = "";
+        predefinedOptions.forEach((option, index) => {
+          const optionElem = document.createElement("div");
+          optionElem.textContent = `${option.command} ${option.params.join(
+            " "
+          )}`;
+          optionElem.onclick = () => selectPredefinedOption(index);
+          container.appendChild(optionElem);
+        });
+      }
+
+      function selectPredefinedOption(index) {
+        const { command, params } = predefinedOptions[index];
+        document.getElementById("serviceCommand").value = command;
+        document.getElementById("serviceParams").value = params.join(", ");
+      }
+
+      function startService() {
+        const command = document.getElementById("serviceCommand").value;
+        const params = document
+          .getElementById("serviceParams")
+          .value.split(",")
+          .map((p) => p.trim());
+
+        fetch("/startService", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command, params }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            alert("Serviço iniciado: " + JSON.stringify(data));
+
+            const history = JSON.parse(
+              localStorage.getItem("serviceHistory") || "[]"
+            );
+            history.push({
+              command,
+              params,
+              timestamp: new Date().toISOString(),
+            });
+            localStorage.setItem("serviceHistory", JSON.stringify(history));
+
+            renderHistory();
+          })
+          .catch((error) => alert("Erro ao iniciar o serviço: " + error));
+      }
+
+      function renderHistory() {
+        const history = JSON.parse(
+          localStorage.getItem("serviceHistory") || "[]"
+        );
+        const container = document.getElementById("history");
+        container.innerHTML = "";
+        history.forEach((item) => {
+          const historyElem = document.createElement("div");
+          historyElem.textContent = `${item.timestamp}: ${
+            item.command
+          } ${item.params.join(" ")}`;
+          container.appendChild(historyElem);
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        renderPredefinedOptions();
+        renderHistory();
+      });
+    </script>
+  </body>
+</html>
