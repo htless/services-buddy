@@ -119,3 +119,43 @@ body {
     background-color: darkred;
   }
   
+  .control-button {
+    display: block;
+    margin-bottom: 10px;
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: #008cba;
+    color: #fff;
+    font-size: 14px;
+  }
+  
+  .control-button.stop-button {
+    background-color: #f44336;
+  }
+  
+  .content {
+    flex: 1;
+    padding: 20px;
+  }
+  
+  .log-container {
+    border: 1px solid #e0e0e0;
+    padding: 10px;
+    height: 400px;
+    overflow-y: scroll;
+    margin-bottom: 10px;
+  }
+  
+  .search-bar {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .search-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+  }

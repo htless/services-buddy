@@ -7,7 +7,6 @@
   <title>Log Viewer</title>
   <link rel="stylesheet" href="main.css" />
 </head>
-
 <body>
   <div class="container">
     <div class="sidebar">
@@ -16,11 +15,14 @@
       <button onclick="toggleModal('stop-services-modal', 'open')" class="stop-button">Parar Serviços</button>
     </div>
   </div>
-  <input type="text" id="search" placeholder="Pesquisar nos logs..." oninput="searchLogs()">
-  <button onclick="highlightNextResult()">Próximo</button>
-  <button onclick="clearHighlight()">Limpar Destaque</button>
   <div class="content">
-    <div id="logContainer"></div>
+    <div id="logContainer" class="log-container"></div>
+
+    <div class="search-bar">
+      <input type="text" id="search" class="search-input" placeholder="Pesquisar nos logs..." oninput="searchLogs()" />
+      <button onclick="highlightNextResult()" class="control-button">Próximo</button>
+      <button onclick="clearHighlight()" class="control-button">Limpar Destaque</button>
+    </div>
   </div>
   </div>
   <div id="modal" class="modal">
