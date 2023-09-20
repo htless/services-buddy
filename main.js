@@ -6,7 +6,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 const fs = require('fs');
 
-const monorepoPath = '';
+const monorepoPath = '../shippon-monorepo';
 
 app.use(express.static('public'));
 
